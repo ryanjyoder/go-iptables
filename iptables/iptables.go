@@ -48,6 +48,7 @@ const (
 )
 
 type IPTables struct {
+	sudoPath string
 	path     string
 	proto    Protocol
 	hasCheck bool
@@ -62,7 +63,7 @@ func New() (*IPTables, error) {
 
 // New creates a new IPTables for the given proto.
 // The proto will determine which command is used, either "iptables" or "ip6tables".
-func NewWithProtocol(proto Protocol) (*IPTables, error) {
+func NewWithProtocol(proto Protocol) (ipt *IPTables, err error) {
 	path, err := exec.LookPath(getIptablesCommand(proto))
 	if err != nil {
 		return nil, err
@@ -71,13 +72,19 @@ func NewWithProtocol(proto Protocol) (*IPTables, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error checking iptables version: %v", err)
 	}
-	ipt := IPTables{
+
+	sudoPath, err := exec.LookPath("sudo")
+	if err != nil {
+		return nil, err
+	}
+	ipt = &IPTables{
+		sudoPath: sudoPath,
 		path:     path,
 		proto:    proto,
 		hasCheck: checkPresent,
 		hasWait:  waitPresent,
 	}
-	return &ipt, nil
+	return ipt, nil
 }
 
 // Proto returns the protocol used by this IPTables.
@@ -244,10 +251,11 @@ func (ipt *IPTables) runWithOutput(args []string, stdout io.Writer) error {
 		}
 		defer ul.Unlock()
 	}
+	args = append([]string{ipt.path}, args...)
 
 	var stderr bytes.Buffer
 	cmd := exec.Cmd{
-		Path:   ipt.path,
+		Path:   ipt.sudoPath,
 		Args:   args,
 		Stdout: stdout,
 		Stderr: &stderr,
